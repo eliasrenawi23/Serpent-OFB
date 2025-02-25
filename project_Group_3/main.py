@@ -1,6 +1,6 @@
 from Crypto.PublicKey import ElGamal
 from Crypto import Random
-from ofb import ofbEnc, ofbDec, pad_plaintext, convert
+from ofb import ofb_encrypt, ofbDec, pad_plaintext, convert
 from signature import sign_message, verify_signature
 from serpent import bitstring2hexstring, hex2string
 
@@ -32,7 +32,7 @@ def encrypt_and_sign_message(keys, other_public_key):
     common_key = calculate_common_key(p, Xa, other_public_key)
     hex_common_key = hex(common_key)
 
-    iv, ciphertext = ofbEnc(plaintext, hex_common_key)
+    iv, ciphertext = ofb_encrypt(plaintext, hex_common_key)
     s1, s2 = sign_message(plaintext, g, Xa, p)
 
     print(f"IV: {iv}\nEncrypted Message: {ciphertext}\nSignature:\nS1: {s1}\nS2: {s2}")

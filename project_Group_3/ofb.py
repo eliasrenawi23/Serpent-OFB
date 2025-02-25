@@ -1,5 +1,7 @@
 import random
 import string
+from typing import Tuple, List, Union
+
 from serpent import (
     convertToBitstring, stringtohex, makeLongKey,
     keyLengthInBitsOf, encrypt
@@ -47,76 +49,113 @@ def str_to_bits(s: str) -> list[int]:
     return [int(bit) for c in s for bit in bin(ord(c) - 48)[2:]]
 
 
-def ofbEnc(plainText, key):
-    plainText = pad_plaintext(plainText)
-    pos = 0
-    cipherTextChunks = []
-    strigkey = str(key)
-    strigkey = strigkey[2:]
-    if strigkey[len(strigkey) - 1:] == '\'':
-        strigkey = strigkey[:-1]
-    strl = strigkey
-    strl = strl.lower()
-    bitsInKey = keyLengthInBitsOf(strl)
-    rawKey = convertToBitstring(strl, bitsInKey)
-    userKey = makeLongKey(rawKey)  # for the increption
-
-    iv = get_random_string()
-    originalIV = str(iv)
-
-    iv = stringtohex(originalIV)
-    bitsInptxt = keyLengthInBitsOf(iv)
-    iv = convertToBitstring(iv, bitsInptxt)
-
-    plainText = str(plainText)
-    while pos + 16 <= len(plainText):
-        toXor = encrypt(iv, userKey)
-
-        toXor2 = toXor
-        toXor = to_bits_adjusted(toXor)
-
-        nextPos = pos + 16
-        textt = plainText[pos:nextPos]
-        toEnc = stringtohex(textt)
-        toEnc = convertToBitstring(toEnc, len(toEnc) * 4)
-        toEnc = str_to_bits(toEnc)
-        cipherText = bytes([toXor[i] ^ toEnc[i] for i in range(128)])
-
-        cipherTextChunks.append(cipherText)
-        pos += 16
-        iv = toXor2
-    return (originalIV, cipherTextChunks)
+def _process_key(key: str) -> str:
+    """
+    Preprocess the encryption key by cleaning, converting to lowercase, and expanding it.
+    """
+    key = str(key)[2:].rstrip("'").lower()
+    bits_in_key = keyLengthInBitsOf(key)
+    raw_key = convertToBitstring(key, bits_in_key)
+    return makeLongKey(raw_key)
 
 
-def ofbDec(cipherTextChunks, key, iv):
-    plainText = b""
-    strigkey = str(key)
-    strigkey = strigkey[2:]
-    if strigkey[len(strigkey) - 1:] == '\'':
-        strigkey = strigkey[:-1]
-    strl = strigkey
-    strl = strl.lower()
-    bitsInKey = keyLengthInBitsOf(strl)
-    rawKey = convertToBitstring(strl, bitsInKey)
-    userKey = makeLongKey(rawKey)  # for the increption
+def _prepare_iv(iv: Union[str, None] = None) -> Tuple[str, List[int]]:
+    """
+    Prepare the Initialization Vector (IV) for encryption or decryption.
 
-    iv = stringtohex(iv)
-    bitsInptxt = keyLengthInBitsOf(iv)
-    iv = convertToBitstring(iv, bitsInptxt)
-    temp = []
-    for chunk in cipherTextChunks:
-        toXor = encrypt(iv, userKey)
-        toXor2 = toXor
-        toXor = to_bits_adjusted(toXor)
-        temp.append(bytes([toXor[i] ^ chunk[i] for i in range(128)]))
-        iv = toXor2
+    Args:
+        iv (str or None): If None, generates a new IV for encryption. If str, converts it for decryption.
 
-    for l in reversed(temp):
-        plainText += l
+    Returns:
+        Tuple[str, List[int]]: The original IV (for encryption) and its bitstring representation.
+    """
+    if iv is None:
+        iv = get_random_string()  # For encryption, generate IV
+    iv_hex = stringtohex(iv)
+    iv_bits = convertToBitstring(iv_hex, keyLengthInBitsOf(iv_hex))
+    return iv, iv_bits
 
-    while plainText[-1] == 48:
-        plainText = plainText[0:-1]
-    if plainText[-1] == 49:
-        plainText = plainText[0:-1]
 
-    return plainText
+def _xor_bytes(list1: List[int], list2: List[int]) -> bytes:
+    """
+    XOR two lists of integers and return the result as bytes.
+    """
+    return bytes(a ^ b for a, b in zip(list1, list2))
+
+
+def _remove_padding(plain_text: bytes) -> bytes:
+    """
+    Remove custom padding from the decrypted plaintext.
+    """
+    while plain_text and plain_text[-1] == 48:  # Remove trailing '0's
+        plain_text = plain_text[:-1]
+    if plain_text and plain_text[-1] == 49:  # Remove trailing '1' if present
+        plain_text = plain_text[:-1]
+    return plain_text
+
+
+def ofb_encrypt(plain_text: str, key: str) -> Tuple[str, List[bytes]]:
+    """
+    Encrypt plaintext using OFB mode.
+
+    Args:
+        plain_text (str): The input text to encrypt.
+        key (str): The encryption key.
+
+    Returns:
+        Tuple[str, List[bytes]]: The IV and a list of ciphertext chunks.
+    """
+    plain_text = pad_plaintext(plain_text)
+    user_key = _process_key(key)
+    original_iv, iv = _prepare_iv()  # Generates IV for encryption
+
+    cipher_text_chunks = []
+    for pos in range(0, len(plain_text), 16):
+        # Generate keystream block
+        keystream_block = encrypt(iv, user_key)
+        iv = keystream_block
+
+        # Prepare plaintext block
+        text_block = plain_text[pos:pos + 16]
+        text_block_hex = stringtohex(text_block)
+        text_block_bits = str_to_bits(convertToBitstring(text_block_hex, len(text_block_hex) * 4))
+
+        # XOR plaintext block with keystream
+        keystream_bits = to_bits_adjusted(keystream_block)
+        cipher_text = _xor_bytes(keystream_bits, text_block_bits)
+
+        cipher_text_chunks.append(cipher_text)
+
+    return original_iv, cipher_text_chunks
+
+
+def ofbDec(cipher_text_chunks: List[bytes], key: str, iv: str) -> bytes:
+    """
+    Decrypt ciphertext using OFB mode.
+
+    Args:
+        cipher_text_chunks (List[bytes]): List of ciphertext chunks.
+        key (str): Encryption key.
+        iv (str): Initialization Vector used for encryption.
+
+    Returns:
+        bytes: The decrypted plaintext after removing padding.
+    """
+    plain_text = b""
+    user_key = _process_key(key)
+
+    _, iv_bits = _prepare_iv(iv)  # Converts provided IV for decryption
+    decrypted_chunks = []
+    for chunk in cipher_text_chunks:
+        keystream_block = encrypt(iv_bits, user_key)
+        iv_bits = keystream_block  # Update IV for the next block
+
+        keystream_bits = to_bits_adjusted(keystream_block)
+        decrypted_chunk = _xor_bytes(keystream_bits, list(chunk))
+        decrypted_chunks.append(decrypted_chunk)
+
+        # Combine decrypted chunks in the original order
+    for chunk in reversed(decrypted_chunks):
+        plain_text += chunk
+
+    return _remove_padding(plain_text)
