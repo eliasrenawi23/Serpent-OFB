@@ -1,58 +1,70 @@
-from Cryptodome.PublicKey import ElGamal
-from Cryptodome import Random
-from ofb import *
-from signature import *
+from Crypto.PublicKey import ElGamal
+from Crypto import Random
+from ofb import ofbEnc, ofbDec, pad_plaintext, convert
+from signature import sign_message, verify_signature
 from serpent import bitstring2hexstring, hex2string
 
 
-def keysgenerator():  # generate a public and private key
-    keys = ElGamal.generate(256, Random.new().read)
-    return keys
+def generate_keys():
+    """
+    Generate a public and private key pair using ElGamal encryption.
+    """
+    return ElGamal.generate(256, Random.new().read)
 
 
-def calc_common_key(p, Xa, Yb):  # get the other party public key and calc common key:
-    commonkey = pow(Yb, Xa, p)  # K=((g^xb)^Xa)mod p=(g^XaXb)mod p
-    return commonkey
+def calculate_common_key(p, private_key, other_public_key):
+    """
+    Calculate the common key using the other party's public key.
+    Formula: K = (Yb^Xa) mod p
+    """
+    return pow(other_public_key, private_key, p)
 
 
-def make_a_message_and_signature_to_transmit(keys, Yb):
-    Message = 'we are group 3 and this  is the message'
-    plainText = makptright(Message)
+def encrypt_and_sign_message(keys, other_public_key):
+    """
+    Encrypts a predefined message and generates its signature.
+    Returns: initialization vector, ciphertext, signature components, and common key in hex.
+    """
+    message = 'we are group 3 and this is the message'
+    plaintext = pad_plaintext(message)
 
-    p = int(keys.p)
-    Xa = int(keys.x)
-    g = int(keys.g)
-    commonkey = calc_common_key(p, Xa, Yb)
-    hexkcommnkey = hex(commonkey)
-    iv, Ctext = ofbEnc(plainText, hexkcommnkey)
-    s1, s2 = signing(plainText, g, Xa, p)  # making a signature
-    print("initializing vector(iv):", iv, "\nencryptedMsg(Ctext):", Ctext,
-          "\nSignature(s1,s2):\nS1:", s1, "\nS2:", s2)
-    # to_send[Signature(s1,s2),encryptedMsg(Ctext),initializing vector(iv)]
-    return iv, Ctext, s1, s2, hexkcommnkey
+    p, g, Xa = int(keys.p), int(keys.g), int(keys.x)
+    common_key = calculate_common_key(p, Xa, other_public_key)
+    hex_common_key = hex(common_key)
+
+    iv, ciphertext = ofbEnc(plaintext, hex_common_key)
+    s1, s2 = sign_message(plaintext, g, Xa, p)
+
+    print(f"IV: {iv}\nEncrypted Message: {ciphertext}\nSignature:\nS1: {s1}\nS2: {s2}")
+    return iv, ciphertext, s1, s2, hex_common_key
 
 
-def on_Message_Ricevere(keys, iv, Ctext, s1, s2, Yb, hexkcommnkey):
-    # check if the signature is valid
-    plain = ofbDec(Ctext, hexkcommnkey, iv)
-    ints = list(plain)
-    l = convert(ints)
-    hextlalalaext = bitstring2hexstring(l)
-    strplaintext = hex2string(hextlalalaext)  # decrypt the message ot calc the hash
-    g = int(keys.g)
-    p = int(keys.p)
-    ValidSignature = verification(strplaintext, Yb, s1, s2, g, p)
-    print("This Signature is Valid") if ValidSignature else print("This Signature is NOT Valid")
-    if(ValidSignature):
-        print ("the message after dcryption is :" ,strplaintext)
+def receive_and_verify_message(keys, iv, ciphertext, s1, s2, sender_public_key, hex_common_key):
+    """
+    Decrypts the ciphertext and verifies the signature.
+    """
+    decrypted_plaintext = ofbDec(ciphertext, hex_common_key, iv)
+    decrypted_bits = convert(list(decrypted_plaintext))
+    decrypted_hex = bitstring2hexstring(decrypted_bits)
+    final_plaintext = hex2string(decrypted_hex)
+
+    g, p = int(keys.g), int(keys.p)
+    is_valid = verify_signature(final_plaintext, sender_public_key, s1, s2, g, p)
+
+    if is_valid:
+        print("✅ Signature is valid.")
+        print(f"📩 Decrypted Message: {final_plaintext}")
+    else:
+        print("❌ Signature is NOT valid.")
 
 
 def main():
-    Yb = 37250134217189821209954084407989998456896241785557502923320401706159181025613  # public key for the other party
-    # this is for the example
-    keys = keysgenerator()
-    iv, Ctext, s1, s2, hexkcommnkey = make_a_message_and_signature_to_transmit(keys, Yb)
-    on_Message_Ricevere(keys, iv, Ctext, s1, s2, int(keys.y), hexkcommnkey)
+    other_public_key = 37250134217189821209954084407989998456896241785557502923320401706159181025613
+    keys = generate_keys()
+
+    iv, ciphertext, s1, s2, hex_common_key = encrypt_and_sign_message(keys, other_public_key)
+    receive_and_verify_message(keys, iv, ciphertext, s1, s2, int(keys.y), hex_common_key)
 
 
-main()
+if __name__ == "__main__":
+    main()

@@ -1,76 +1,71 @@
 import random
-from Cryptodome.Hash import SHA256
-from Cryptodome.Util.number import GCD
+from Crypto.Hash import SHA256
+from Crypto.Util.number import GCD
 
 
-def getG(p):
-    for x in range(1, p):
-        rand = x
-        exp = 1
-        next = rand % p
+def get_generator(p: int) -> int:
+    """
+    Find a generator 'g' for the multiplicative group modulo p.
+    A generator 'g' satisfies g^(p-1) ≡ 1 (mod p).
+    """
+    for candidate in range(1, p):
+        power_result = candidate % p
+        exponent = 1
 
-        while (next != 1):
-            next = (next * rand) % p
-            exp = exp + 1
-        if (exp == p - 1):
-            return rand
+        while power_result != 1:
+            power_result = (power_result * candidate) % p
+            exponent += 1
+
+        if exponent == p - 1:
+            return candidate
+    raise ValueError(f"No generator found for p = {p}")
 
 
-def modInverse(k, p):
-    m0 = p
-    y = 0
-    x = 1
+def modular_inverse(k: int, p: int) -> int:
+    """
+    Compute the modular inverse of k modulo p using the Extended Euclidean Algorithm.
+    The result x satisfies (k * x) % p == 1.
+    """
+    original_p, x, y = p, 1, 0
 
-    if (p == 1):
+    if p == 1:
         return 0
 
-    while (k > 1):
-        # q is quotient
+    while k > 1:
         q = k // p
+        k, p = p, k % p
+        x, y = y, x - q * y
 
-        t = p
-
-        # m is remainder now, process
-        # same as Euclid's algo
-        p = k % p
-        k = t
-        t = y
-
-        # Update x and y
-        y = x - q * y
-        x = t
-
-        # Make x positive
-    if (x < 0):
-        x = x + m0
-
-    return x
+    return x + original_p if x < 0 else x
 
 
-def signing(M, a, Xa, p):
-    digest = SHA256.new(M.encode()).digest()
-    m = int.from_bytes(digest, byteorder='big')
-    m = m % p  # idk must be  0<D<p
-    K = random.randrange(1, p - 1)  # secret key for user A
+def sign_message(message: str, g: int, private_key: int, p: int) -> tuple[int, int]:
+    """
+    Generate a digital signature (s1, s2) for a given message using ElGamal signature scheme.
+    """
+    digest = SHA256.new(message.encode()).digest()
+    m = int.from_bytes(digest, byteorder='big') % p
+
     while True:
-        if GCD(K, p - 1) != 1:
-            K = random.randrange(1, p - 1)  # choose another k
-        else:
+        k = random.randrange(1, p - 1)
+        if GCD(k, p - 1) == 1:
             break
-    s1 = pow(a, K, p)
-    inverseK = modInverse(K, p - 1)  ##K^-1 mod p-1
 
-    s2 = (inverseK * (m - (Xa * s1))) % (p - 1)
+    s1 = pow(g, k, p)
+    k_inverse = modular_inverse(k, p - 1)  #K^-1 mod p-1
+    s2 = (k_inverse * (m - (private_key * s1))) % (p - 1)
 
     return s1, s2
 
 
-def verification(M, Ya, s1, s2, a, p):
-    digest = SHA256.new(M.encode()).digest()
-    m = int.from_bytes(digest, byteorder='big')
-    m = m % p  # idk must be  0<D<p
-    v1 = pow(a, m, p)
-    temp1 = pow(Ya, s1, p)
-    temp2 = pow(s1, s2, p)
-    v2 = (temp1 * temp2) % p  # v2=((Ya^s1)*(s1^s2))mod p = ((Ya^s1)%p)*(s1^s2)%p)%p
+def verify_signature(message: str, public_key: int, s1: int, s2: int, g: int, p: int) -> bool:
+    """
+    Verify the ElGamal digital signature for the given message.
+    """
+    digest = SHA256.new(message.encode()).digest()
+    m = int.from_bytes(digest, byteorder='big') % p
+
+    v1 = pow(g, m, p)
+    v2 = (pow(public_key, s1, p) * pow(s1, s2, p)) % p
+
     return v1 == v2

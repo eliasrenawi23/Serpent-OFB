@@ -1,50 +1,37 @@
 import random
 import string
-from serpent import convertToBitstring, stringtohex, makeLongKey, \
+from serpent import (
+    convertToBitstring, stringtohex, makeLongKey,
     keyLengthInBitsOf, encrypt
+)
 
 
-def get_random_string():
-    # printing lowercase
-    letters = string.ascii_lowercase
-
-    stringg = ''.join(random.choice(letters) for i in range(16))
-    return stringg
+def get_random_string(length: int = 16) -> str:
+    """Generate a random lowercase string of a given length."""
+    return ''.join(random.choice(string.ascii_lowercase) for _ in range(length))
 
 
-def tobits(s):
-    result = []
-    for c in s:
-        bits = bin(ord(c))[2:]
-        bits = '00000000'[len(bits):] + bits
-        result.extend([int(b) for b in bits])
-    return result
+def to_bits(s: str) -> list[int]:
+    """Convert a string to a list of bits (ASCII encoding)."""
+    return [int(bit) for c in s for bit in f'{ord(c):08b}']
 
 
-def tobits2(s):
-    result = []
-    for c in s:
-        bits = bin(ord(c) - 48)[2:]
-        result.extend([int(b) for b in bits])
-        # result.extend(bits)
-    return result
+def to_bits_adjusted(s: str) -> list[int]:
+    """Convert a string to a list of bits, adjusting ord(c) by -48."""
+    return [int(bit) for c in s for bit in bin(ord(c) - 48)[2:]]
 
 
-def frombits(bits):
-    chars = []
-    for b in range(len(bits) / 8):
-        byte = bits[b * 8:(b + 1) * 8]
-        chars.append(chr(int(''.join([str(bit) for bit in byte]), 2)))
+def from_bits(bits: list[int]) -> str:
+    """Convert a list of bits back to a string."""
+    chars = [chr(int(''.join(map(str, bits[i:i + 8])), 2)) for i in range(0, len(bits), 8)]
     return ''.join(chars)
 
 
-def makptright(plainText):
-    result = plainText
-    if len(result) % 16 != 0:
-        result += "1"
-    while len(result) % 16 != 0:
-        result += "0"
-    return result
+def pad_plaintext(plainText):
+    """Ensure plaintext length is a multiple of 16 by appending '1' and then '0's if needed."""
+    if len(plainText) % 16 != 0:
+        plainText += '1' + '0' * ((16 - len(plainText) % 16) - 1)
+    return plainText
 
 
 def convert(s):
@@ -55,16 +42,13 @@ def convert(s):
     return new
 
 
-def helpstr(strt):
-    result = []
-    for c in strt:
-        bits = bin(ord(c) - 48)[2:]
-        result.extend([int(b) for b in bits])
-    return result
+def str_to_bits(s: str) -> list[int]:
+    """Convert a string of digits to a list of bits."""
+    return [int(bit) for c in s for bit in bin(ord(c) - 48)[2:]]
 
 
 def ofbEnc(plainText, key):
-    plainText = makptright(plainText)
+    plainText = pad_plaintext(plainText)
     pos = 0
     cipherTextChunks = []
     strigkey = str(key)
@@ -89,13 +73,13 @@ def ofbEnc(plainText, key):
         toXor = encrypt(iv, userKey)
 
         toXor2 = toXor
-        toXor = tobits2(toXor)
+        toXor = to_bits_adjusted(toXor)
 
         nextPos = pos + 16
         textt = plainText[pos:nextPos]
         toEnc = stringtohex(textt)
         toEnc = convertToBitstring(toEnc, len(toEnc) * 4)
-        toEnc = helpstr(toEnc)
+        toEnc = str_to_bits(toEnc)
         cipherText = bytes([toXor[i] ^ toEnc[i] for i in range(128)])
 
         cipherTextChunks.append(cipherText)
@@ -123,7 +107,7 @@ def ofbDec(cipherTextChunks, key, iv):
     for chunk in cipherTextChunks:
         toXor = encrypt(iv, userKey)
         toXor2 = toXor
-        toXor = tobits2(toXor)
+        toXor = to_bits_adjusted(toXor)
         temp.append(bytes([toXor[i] ^ chunk[i] for i in range(128)]))
         iv = toXor2
 
