@@ -194,9 +194,8 @@ bin2hex = {
 }
 
 # Make the reverse lookup table too
-hex2bin = {}
-for (bin, hex) in bin2hex.items():
-    hex2bin[hex] = bin
+hex2bin = {v: k for k, v in bin2hex.items()}
+
 
 
 def rotateLeft(input, places):
@@ -250,18 +249,11 @@ def binaryXor(n1, n2):
     EXAMPLE: binaryXor("10010", "00011") -> "10001"
     """
     if len(n1) != len(n2):
-        raise ValueError("can't xor bitstrings of different " + \
-                         "lengths (%d and %d)" % (len(n1), len(n2)))
+        raise ValueError(f"Bitstrings must have same length ({len(n1)} vs {len(n2)})")
     # We assume that they are genuine bitstrings instead of just random
     # character strings.
 
-    result = ""
-    for i in range(len(n1)):
-        if n1[i] == n2[i]:
-            result = result + "0"
-        else:
-            result = result + "1"
-    return result
+    return "".join("1" if b1 != b2 else "0" for b1, b2 in zip(n1, n2))
 
 
 def xor(*args):
@@ -271,8 +263,8 @@ def xor(*args):
     EXAMPLE: xor("01", "11", "10") -> "00"
     """
 
-    if args == []:
-        raise ValueError("at least one argument needed")
+    if not args:
+        raise ValueError("At least one argument needed for XOR")
 
     result = args[0]
     for arg in args[1:]:
@@ -291,14 +283,15 @@ def makeSubkeys(userKey):
 
     # We write the key as 8 32-bit words w-8 ... w-1
     # ENOTE: w-8 is the least significant word
-    w = {}
-    for i in range(-8, 0):
-        w[i] = userKey[(i + 8) * 32:(i + 9) * 32]
+
+    w = {i: userKey[(i + 8) * 32:(i + 9) * 32] for i in range(-8, 0)}
 
     # We expand these to a prekey w0 ... w131 with the affine recurrence
     for i in range(132):
-        w[i] = rotateLeft(xor(w[i - 8], w[i - 5], w[i - 3], w[i - 1], bitstring(phi, 32), bitstring(i, 32)), 11)
-
+        w[i] = rotateLeft(
+            xor(w[i - 8], w[i - 5], w[i - 3], w[i - 1], bitstring(phi, 32), bitstring(i, 32)),
+            11
+        )
     # The round keys are now calculated from the prekeys using the S-boxes
     # in bitslice mode. Each k[i] is a 32-bit bitstring.
     k = {}
